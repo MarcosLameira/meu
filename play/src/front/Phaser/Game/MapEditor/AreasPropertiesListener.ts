@@ -5,6 +5,7 @@ import {
     FocusablePropertyData,
     JitsiRoomPropertyData,
     ListenerMegaphonePropertyData,
+    MatrixRoomPropertyData,
     OpenWebsitePropertyData,
     PersonalAreaAccessClaimMode,
     PersonalAreaPropertyData,
@@ -24,7 +25,7 @@ import { localUserStore } from "../../../Connection/LocalUserStore";
 import { Room } from "../../../Connection/Room";
 import { JITSI_PRIVATE_MODE, JITSI_URL } from "../../../Enum/EnvironmentVariable";
 import { audioManagerFileStore, audioManagerVisibilityStore } from "../../../Stores/AudioManagerStore";
-import { chatZoneLiveStore } from "../../../Stores/ChatStore";
+import { chatVisibilityStore, chatZoneLiveStore } from "../../../Stores/ChatStore";
 /**
  * @DEPRECATED - This is the old way to show trigger message
  import { layoutManagerActionStore } from "../../../Stores/LayoutManagerStore";
@@ -44,6 +45,7 @@ import { mapEditorAskToClaimPersonalAreaStore } from "../../../Stores/MapEditorS
 import { requestVisitCardsStore, selectedChatIDRemotePlayerStore } from "../../../Stores/GameStore";
 import { isMediaBreakpointUp } from "../../../Utils/BreakpointsUtils";
 import { MessageUserJoined } from "../../../Connection/ConnexionModels";
+import { navChat, selectedRoom } from "../../../Chat/Stores/ChatStore";
 import { Area } from "../../Entity/Area";
 
 export class AreasPropertiesListener {
@@ -191,6 +193,11 @@ export class AreasPropertiesListener {
 
                 break;
             }
+            case "matrixRoomPropertyData": {
+                this.handleMatrixRoomAreaOnEnter(property, area);
+                break;
+            }
+
             default: {
                 break;
             }
@@ -252,6 +259,13 @@ export class AreasPropertiesListener {
                 this.handlePersonalAreaPropertyOnEnter(newProperty, area);
                 break;
             }
+            case "matrixRoomPropertyData": {
+                newProperty = newProperty as typeof oldProperty;
+                this.handleMatrixRoomAreaOnEnter(newProperty, area);
+                this.handleMatrixRoomAreaOnLeave(oldProperty);
+                break;
+            }
+
             case "silent":
             default: {
                 break;
@@ -291,6 +305,10 @@ export class AreasPropertiesListener {
             }
             case "personalAreaPropertyData": {
                 this.handlePersonalAreaPropertyOnLeave(area);
+                break;
+            }
+            case "matrixRoomPropertyData": {
+                this.handleMatrixRoomAreaOnLeave(property);
                 break;
             }
             default: {
@@ -548,6 +566,38 @@ export class AreasPropertiesListener {
         }
     }
 
+    private async handleMatrixRoomAreaOnEnter(property: MatrixRoomPropertyData, areaData: AreaData) {
+    
+        const room  = get(this.scene.chatConnection.rooms).filter((room) => property.matrixRoomId === room.id)[0];
+        
+        if(!room){
+            this
+                .scene
+                .chatConnection
+                .joinRoom(property.matrixRoomId)
+                .then((newRoom)=>{
+                    selectedRoom.set(newRoom);
+                    navChat.set("chat");
+                    chatZoneLiveStore.set(true);
+                    if (property.shouldOpenAutomatically) chatVisibilityStore.set(true);
+                })
+                .catch(()=>{
+                    console.error('failed to join the new room');
+                });
+
+                return;
+        }
+
+        console.log({room},property.matrixRoomId);
+
+        if (room) {
+            selectedRoom.set(room);
+            navChat.set("chat");
+            chatZoneLiveStore.set(true);
+            if (property.shouldOpenAutomatically) chatVisibilityStore.set(true);
+            return;
+        }
+    }
     private displayPersonalAreaOwnerVisitCard(ownerId: string, areaData: AreaData, area?: Area) {
         const connectedUserUUID = localUserStore.getLocalUser()?.uuid;
         if (connectedUserUUID != ownerId) {
@@ -710,6 +760,17 @@ export class AreasPropertiesListener {
             requestVisitCardsStore.set(null);
         }
         area?.unHighLightArea();
+    }
+
+    private handleMatrixRoomAreaOnLeave(property: MatrixRoomPropertyData) {
+            const actualRoom = get(selectedRoom) ;
+            const chatVisibility = get(chatVisibilityStore);
+
+        if (actualRoom?.id === property.matrixRoomId && chatVisibility) {
+            chatVisibilityStore.set(false);
+            selectedRoom.set(undefined);
+        }
+        chatZoneLiveStore.set(false);
     }
 
     private openCoWebsiteFunction(
