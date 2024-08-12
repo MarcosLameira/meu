@@ -1,6 +1,7 @@
 import { derived, get, Readable, writable, Writable } from "svelte/store";
 import {
     ClientEvent,
+    Direction,
     EventType,
     ICreateRoomOpts,
     ICreateRoomStateEvent,
@@ -10,6 +11,8 @@ import {
     PendingEventOrdering,
     Room,
     RoomEvent,
+    RoomState,
+    RoomStateEvent,
     SyncState,
     Visibility,
 } from "matrix-js-sdk";
@@ -21,6 +24,7 @@ import {
     ChatConnectionInterface,
     chatId,
     ChatRoom,
+    ChatSpaceRoom,
     ChatUser,
     Connection,
     ConnectionStatus,
@@ -44,6 +48,7 @@ export enum INTERACTIVE_AUTH_PHASE {
 
 export class MatrixChatConnection implements ChatConnectionInterface {
     private readonly roomList: MapStore<string, ChatRoom>;
+    private spaceRoomList: MapStore<string, ChatRoom>;
     private client!: MatrixClient;
     connectionStatus: Writable<ConnectionStatus>;
     directRooms: Readable<ChatRoom[]>;
@@ -53,6 +58,7 @@ export class MatrixChatConnection implements ChatConnectionInterface {
     userDisconnected: MapStore<chatId, ChatUser> = new MapStore<chatId, ChatUser>();
     isEncryptionRequiredAndNotSet: Writable<boolean>;
     isGuest!: Writable<boolean>;
+    roomBySpaceRoom: Readable<Map<ChatSpaceRoom, ChatRoom[]>>;
 
     constructor(
         private connection: Connection,
@@ -61,6 +67,7 @@ export class MatrixChatConnection implements ChatConnectionInterface {
     ) {
         this.connectionStatus = writable("CONNECTING");
         this.roomList = new MapStore<string, MatrixChatRoom>();
+        this.spaceRoomList = new MapStore<string, MatrixChatRoom>();
 
         this.directRooms = derived(this.roomList, (roomList) => {
             return Array.from(roomList.values()).filter(
@@ -77,6 +84,41 @@ export class MatrixChatConnection implements ChatConnectionInterface {
                 (room) => room.myMembership === KnownMembership.Join && room.type === "multiple"
             );
         });
+
+        this.roomBySpaceRoom = derived(
+            [this.spaceRoomList, this.roomList],
+            ([spaceRoomList, roomList]) => {
+                let roomsBelongToASpace: string[] = [];
+                const roomListArray = Array.from(roomList.values());
+                const spaceByRoomMap = Array.from(spaceRoomList.values()).reduce((roomBySpaceRoomAcc, currentSpace) => {
+                    const listRoomIdsFromCurrentSpace: string[] =
+                        this.client
+                            .getRoom(currentSpace.id)
+                            ?.getLiveTimeline()
+                            ?.getState(Direction.Forward)
+                            ?.getStateEvents("m.space.child")
+                            .reduce((acc, cur) => {
+                                const childRoomID = cur.getStateKey();
+                                if (childRoomID) acc.push(childRoomID);
+                                return acc;
+                            }, [] as string[]) || [];
+
+                    roomsBelongToASpace = [...roomsBelongToASpace, ...listRoomIdsFromCurrentSpace];
+
+                    const roomsForThisSpace = roomListArray.filter((room) =>
+                        listRoomIdsFromCurrentSpace.includes(room.id)
+                    );
+                    roomBySpaceRoomAcc.set(currentSpace, roomsForThisSpace);
+                    return roomBySpaceRoomAcc;
+                }, new Map<ChatSpaceRoom | undefined, ChatRoom[]>());
+
+                const roomsWithoutSpace = roomListArray.filter((room) => !roomsBelongToASpace.includes(room.id));
+
+                spaceByRoomMap.set(undefined, roomsWithoutSpace);
+                return spaceByRoomMap;
+            },
+            new Map()
+        );
 
         this.isEncryptionRequiredAndNotSet = this.matrixSecurity.isEncryptionRequiredAndNotSet;
 
@@ -111,6 +153,7 @@ export class MatrixChatConnection implements ChatConnectionInterface {
         this.client.on(ClientEvent.Room, this.onClientEventRoom.bind(this));
         this.client.on(ClientEvent.DeleteRoom, this.onClientEventDeleteRoom.bind(this));
         this.client.on(RoomEvent.MyMembership, this.onRoomEventMembership.bind(this));
+        this.client.on(RoomStateEvent.Update, this.onRoomStateEventUpdate.bind(this));
 
         await this.client.store.startup();
         await this.client.initRustCrypto();
@@ -121,9 +164,19 @@ export class MatrixChatConnection implements ChatConnectionInterface {
         });
     }
 
+    private onRoomStateEventUpdate(event: RoomState) {
+        const roomID = event.roomId;
+        const room = this.client.getRoom(roomID);
+        console.log({ event });
+        if (room && this.spaceRoomList.has(roomID)) {
+            this.spaceRoomList.set(roomID, new MatrixChatRoom(room));
+        }
+    }
+
     private onClientEventRoom(room: Room) {
         const { roomId } = room;
-        const existingMatrixChatRoom = this.roomList.get(roomId);
+        const isSpaceRoom = room.isSpaceRoom();
+        const existingMatrixChatRoom = this.roomList.get(roomId) || this.spaceRoomList.get(roomId);
 
         if (existingMatrixChatRoom !== undefined) {
             console.warn("room already exist");
@@ -131,11 +184,18 @@ export class MatrixChatConnection implements ChatConnectionInterface {
         }
 
         const matrixRoom = new MatrixChatRoom(room);
+
+        if (isSpaceRoom) {
+            this.spaceRoomList.set(matrixRoom.id, matrixRoom);
+            return;
+        }
+
         this.roomList.set(matrixRoom.id, matrixRoom);
     }
 
     private onClientEventDeleteRoom(roomId: string) {
         this.roomList.delete(roomId);
+        this.spaceRoomList.delete(roomId);
     }
 
     private onRoomEventMembership(room: Room, membership: string, prevMembership: string | undefined) {
@@ -291,8 +351,20 @@ export class MatrixChatConnection implements ChatConnectionInterface {
         if (roomOptions === undefined) {
             return Promise.reject(new Error("CreateRoomOptions is empty"));
         }
+
         try {
-            return await this.client.createRoom(this.mapCreateRoomOptionsToMatrixCreateRoomOptions(roomOptions));
+            const result = await this.client.createRoom(
+                this.mapCreateRoomOptionsToMatrixCreateRoomOptions(roomOptions)
+            );
+
+            if (roomOptions.parentSpaceID) {
+                this.addRoomToSpace(roomOptions.parentSpaceID, result.room_id);
+                const parentSpace = this.client.getRoom(roomOptions.parentSpaceID);
+                if (parentSpace) {
+                    this.spaceRoomList.set(roomOptions.parentSpaceID, new MatrixChatRoom(parentSpace));
+                }
+            }
+            return result;
         } catch (error) {
             throw this.handleMatrixError(error);
         }
@@ -334,6 +406,16 @@ export class MatrixChatConnection implements ChatConnectionInterface {
             initial_state.push({
                 type: EventType.RoomHistoryVisibility,
                 content: { history_visibility: roomOptions?.historyVisibility },
+            });
+        }
+
+        if (roomOptions.parentSpaceID) {
+            initial_state.push({
+                type: EventType.SpaceParent,
+                state_key: roomOptions.parentSpaceID,
+                content: {
+                    via: [this.client.getDomain()],
+                },
             });
         }
         initial_state.push({ type: EventType.RoomGuestAccess, content: { guest_access: "can_join" } });
@@ -516,6 +598,20 @@ export class MatrixChatConnection implements ChatConnectionInterface {
 
     initEndToEndEncryption(): Promise<void> {
         return this.matrixSecurity.initClientCryptoConfiguration();
+    }
+
+    private addRoomToSpace(spaceRoomId: string, childRoomId: string) {
+        // Send the m.space.child event to link the room to the space
+        this.client
+            .sendStateEvent(
+                spaceRoomId,
+                "m.space.child",
+                {
+                    via: [this.client.getDomain()], // The domain of the homeserver to be used to join the room
+                },
+                childRoomId
+            )
+            .catch((error) => console.error("Error adding room to space : ", error));
     }
 
     private async addDMRoomInAccountData(userId: string, roomId: string) {
