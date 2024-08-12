@@ -57,7 +57,7 @@ export class ProximityChatRoom implements ChatRoom {
     hasPreviousMessage = writable(false);
     isEncrypted = writable(false);
     typingMembers: Writable<Array<{ id: string; name: string | null; avatarUrl: string | null }>>;
-
+    isSpaceRoom = false;
     unknowUser = {
         id: "0",
         uuid: "0",
