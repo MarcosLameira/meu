@@ -115,7 +115,7 @@
             {:else}
                 <IconChevronRight />
             {/if}
-            Invitations
+            {$LL.chat.invitations()}
         </button>
         {#if displayRoomInvitations}
             <div class="tw-flex tw-flex-col tw-overflow-auto">
