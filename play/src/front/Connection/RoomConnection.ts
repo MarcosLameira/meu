@@ -71,6 +71,7 @@ import {
     UnwatchSpaceMessage,
     PublicEvent,
     PrivateEvent,
+    CreateChatRoomForAreaAnswer,
 } from "@workadventure/messages";
 import { slugify } from "@workadventure/shared-utils/src/Jitsi/slugify";
 import { BehaviorSubject, Subject } from "rxjs";
@@ -1712,6 +1713,21 @@ export class RoomConnection implements RoomConnection {
         return answer.chatMembersAnswer;
     }
 
+    public async queryCreateChatRoomForArea(areaID: string): Promise<CreateChatRoomForAreaAnswer> {
+        const answer = await this.query({
+            $case: "createChatRoomForAreaQuery",
+            createChatRoomForAreaQuery: {
+                areaID,
+            },
+        });
+
+        if (answer.$case !== "createChatRoomForAreaAnswer") {
+            throw new Error("Unexpected answer");
+        }
+
+        return answer.createChatRoomForAreaAnswer;
+    }
+
     public emitUpdateChatId(email: string, chatId: string) {
         if (chatId && email)
             this.send({
@@ -1789,6 +1805,26 @@ export class RoomConnection implements RoomConnection {
                     userId,
                     spaceName,
                 },
+            },
+        });
+    }
+
+    public emitEnterChatRoomArea(roomID: string): void {
+        this.send({
+            message: {
+                $case: "enterChatRoomAreaMessage",
+                enterChatRoomAreaMessage: {
+                    roomID,
+                },
+            },
+        });
+    }
+
+    public emitLeaveChatRoomArea(): void {
+        this.send({
+            message: {
+                $case: "leaveChatRoomAreaMessage",
+                leaveChatRoomAreaMessage:{}
             },
         });
     }
