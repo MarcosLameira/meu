@@ -124,6 +124,11 @@ message LeaveChatRoomAreaMessage {
   string roomID = 1;
 }
 
+message ChangeChatRoomAreaNameMessage{
+  string roomID = 1;
+  string name = 2;
+}
+
 message EmotePromptMessage {
   string emote = 2;
 }
@@ -339,6 +344,7 @@ message ClientToServerMessage {
     PublicEvent publicEvent = 43;
     PrivateEvent privateEvent = 44;
     LeaveChatRoomAreaMessage leaveChatRoomAreaMessage = 45;
+    ChangeChatRoomAreaNameMessage changeChatRoomAreaNameMessage=46;
   }
 }
 
