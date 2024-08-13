@@ -122,7 +122,7 @@ export interface ChatConnectionInterface {
         }[]
     >;
 
-    joinRoom(roomId: string): Promise<ChatRoom | undefined>;
+    joinRoom(roomId: string): Promise<ChatRoom>;
 
     destroy(): Promise<void>;
 
