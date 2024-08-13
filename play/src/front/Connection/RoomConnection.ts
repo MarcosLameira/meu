@@ -52,6 +52,7 @@ import {
     RoomShortDescription,
     ServerToClientMessage as ServerToClientMessageTsProto,
     SetPlayerDetailsMessage as SetPlayerDetailsMessageTsProto,
+    ChangeChatRoomAreaNameMessage as ChangeChatRoomAreaNameMessageTsProto,
     SetPlayerVariableMessage_Scope,
     TokenExpiredMessage,
     UpdateSpaceFilterMessage,
@@ -862,6 +863,19 @@ export class RoomConnection implements RoomConnection {
             message: {
                 $case: "setPlayerDetailsMessage",
                 setPlayerDetailsMessage: message,
+            },
+        });
+    }
+
+    public emitChatRoomAreaNameChange(roomID: string,name:string): void {
+        const message = ChangeChatRoomAreaNameMessageTsProto.fromPartial({
+            roomID,
+            name
+        });
+        this.send({
+            message: {
+                $case: "changeChatRoomAreaNameMessage",
+                changeChatRoomAreaNameMessage: message,
             },
         });
     }
