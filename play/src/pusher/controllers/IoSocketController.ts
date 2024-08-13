@@ -508,7 +508,7 @@ export class IoSocketController {
                             megaphoneState: undefined,
                             chatID,
                             world: userData.world,
-                            currentChatRoomArea : undefined
+                            currentChatRoomArea : []
                         };
 
                         /* This immediately calls open handler, you must not use res after this call */
@@ -844,7 +844,8 @@ export class IoSocketController {
                         }
                         case "leaveChatRoomAreaMessage":{
                             socketManager.handleLeaveChatRoomArea(
-                                socket
+                                socket,
+                                message.message.leaveChatRoomAreaMessage.roomID
                             );
                             break;
                         }
@@ -1086,7 +1087,7 @@ export class IoSocketController {
                         .leaveChatRoomArea(socket)
                         .catch(error=>console.error(error));
                     //TODO : utile ?
-                    socketData.currentChatRoomArea = "";
+                    socketData.currentChatRoomArea = [];
                 } catch (e) {
                     Sentry.captureException(`An error occurred on "disconnect" ${e}`);
                     console.error(e);

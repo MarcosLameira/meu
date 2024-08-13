@@ -1820,11 +1820,13 @@ export class RoomConnection implements RoomConnection {
         });
     }
 
-    public emitLeaveChatRoomArea(): void {
+    public emitLeaveChatRoomArea(roomID: string): void {
         this.send({
             message: {
                 $case: "leaveChatRoomAreaMessage",
-                leaveChatRoomAreaMessage:{}
+                leaveChatRoomAreaMessage:{
+                    roomID
+                }
             },
         });
     }
