@@ -66,5 +66,5 @@ export type SocketData = {
     megaphoneState?: boolean;
     chatID?: string;
     world: string;
-    currentChatRoomArea?: string
+    currentChatRoomArea: string[]
 };

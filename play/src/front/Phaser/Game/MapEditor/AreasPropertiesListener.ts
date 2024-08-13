@@ -791,7 +791,7 @@ export class AreasPropertiesListener {
             this
             .scene
             .connection
-            .emitLeaveChatRoomArea();
+            .emitLeaveChatRoomArea(property.matrixRoomId);
         }
     }
 
