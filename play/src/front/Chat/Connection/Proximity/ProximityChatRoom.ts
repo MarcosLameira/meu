@@ -4,6 +4,7 @@ import { Readable, Writable, get, writable, Unsubscriber } from "svelte/store";
 import { v4 as uuidv4 } from "uuid";
 import { Subscription } from "rxjs";
 import { AvailabilityStatus } from "@workadventure/messages";
+import { ChatMessageTypes } from "@workadventure/shared-utils";
 import {
     ChatMessage,
     ChatMessageContent,
@@ -15,13 +16,14 @@ import {
 } from "../ChatConnection";
 import LL from "../../../../i18n/i18n-svelte";
 import { iframeListener } from "../../../Api/IframeListener";
-import { RoomConnection } from "../../../Connection/RoomConnection";
 import { SpaceInterface } from "../../../Space/SpaceInterface";
 import { SpaceRegistryInterface } from "../../../Space/SpaceRegistry/SpaceRegistryInterface";
 import { chatVisibilityStore } from "../../../Stores/ChatStore";
 import { selectedRoom } from "../../Stores/ChatStore";
 import { SpaceFilterInterface, SpaceUserExtended } from "../../../Space/SpaceFilter/SpaceFilter";
 import { mapExtendedSpaceUserToChatUser } from "../../UserProvider/ChatUserMapper";
+import { SimplePeer } from "../../../WebRtc/SimplePeer";
+import { bindMuteEventsToSpace } from "../../../Space/Utils/BindMuteEvents";
 
 export class ProximityChatMessage implements ChatMessage {
     isQuotedMessage = undefined;
@@ -72,6 +74,7 @@ export class ProximityChatRoom implements ChatRoom {
     private usersUnsubscriber: Unsubscriber | undefined;
     private spaceWatcherUserJoinedObserver: Subscription | undefined;
     private spaceWatcherUserLeftObserver: Subscription | undefined;
+    private newChatMessageWritingStatusStreamUnsubscriber: Subscription;
 
     private unknownUser = {
         chatId: "0",
@@ -86,11 +89,25 @@ export class ProximityChatRoom implements ChatRoom {
     } as ChatUser;
 
     constructor(
-        private roomConnection: RoomConnection,
         private _userId: number,
-        private spaceRegistry: SpaceRegistryInterface
+        private spaceRegistry: SpaceRegistryInterface,
+        private simplePeer: SimplePeer,
+        iframeListenerInstance: Pick<typeof iframeListener, "newChatMessageWritingStatusStream">
     ) {
         this.typingMembers = writable([]);
+
+        this.newChatMessageWritingStatusStreamUnsubscriber =
+            iframeListenerInstance.newChatMessageWritingStatusStream.subscribe((status) => {
+                if (status === ChatMessageTypes.userWriting) {
+                    this.startTyping().catch((e) => {
+                        console.error("Error while sending typing status", e);
+                    });
+                } else if (status === ChatMessageTypes.userStopWriting) {
+                    this.stopTyping().catch((e) => {
+                        console.error("Error while sending typing status", e);
+                    });
+                }
+            });
     }
 
     sendMessage(message: string, action: ChatMessageType = "proximity", broadcast = true): void {
@@ -320,6 +337,7 @@ export class ProximityChatRoom implements ChatRoom {
 
     public joinSpace(spaceName: string): void {
         this._space = this.spaceRegistry.joinSpace(spaceName);
+        bindMuteEventsToSpace(this._space);
 
         this._spaceWatcher = this._space.watchAllUsers();
         this.usersUnsubscriber = this._spaceWatcher.usersStore.subscribe((users) => {
@@ -327,6 +345,9 @@ export class ProximityChatRoom implements ChatRoom {
         });
 
         this.spaceWatcherUserJoinedObserver = this._spaceWatcher.observeUserJoined.subscribe((spaceUser) => {
+            if (spaceUser.id === this._userId) {
+                return;
+            }
             this.addIncomingUser(spaceUser);
         });
 
@@ -351,6 +372,8 @@ export class ProximityChatRoom implements ChatRoom {
                 this.removeTypingUser(event.sender);
             }
         });
+
+        this.simplePeer.setSpaceFilter(this._spaceWatcher);
     }
 
     public leaveSpace(spaceName: string): void {
@@ -364,6 +387,20 @@ export class ProximityChatRoom implements ChatRoom {
             Sentry.captureMessage("Trying to leave a space different from the one joined");
             return;
         }
+
+        if (this.users) {
+            if (this.users.size > 2) {
+                this.sendMessage(get(LL).chat.timeLine.youLeft(), "outcoming", false);
+            } else {
+                for (const user of this.users.values()) {
+                    if (user.id === this._userId) {
+                        continue;
+                    }
+                    this.sendMessage(get(LL).chat.timeLine.outcoming({ userName: user.name }), "outcoming", false);
+                }
+            }
+        }
+
         this.spaceWatcherUserJoinedObserver?.unsubscribe();
         this.spaceWatcherUserLeftObserver?.unsubscribe();
         if (this.usersUnsubscriber) {
@@ -373,5 +410,11 @@ export class ProximityChatRoom implements ChatRoom {
         this.spaceRegistry.leaveSpace(spaceName);
         this.spaceMessageSubscription?.unsubscribe();
         this.spaceIsTypingSubscription?.unsubscribe();
+
+        this.simplePeer.setSpaceFilter(undefined);
+    }
+
+    public destroy(): void {
+        this.newChatMessageWritingStatusStreamUnsubscriber.unsubscribe();
     }
 }

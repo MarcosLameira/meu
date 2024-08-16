@@ -12,6 +12,7 @@ import { JITSI_DOMAIN, JITSI_MUC_DOMAIN, JITSI_XMPP_DOMAIN } from "../../Enum/En
 import { SpaceInterface } from "../../Space/SpaceInterface";
 import { SpaceRegistryInterface } from "../../Space/SpaceRegistry/SpaceRegistryInterface";
 import { SpaceFilterInterface } from "../../Space/SpaceFilter/SpaceFilter";
+import { bindMuteEventsToSpace } from "../../Space/Utils/BindMuteEvents";
 import { jitsiConferencesStore } from "./JitsiConferencesStore";
 import { JitsiConferenceWrapper } from "./JitsiConferenceWrapper";
 import { JitsiTrackWrapper } from "./JitsiTrackWrapper";
@@ -47,6 +48,7 @@ export class JitsiBroadcastSpace extends EventTarget implements BroadcastSpace {
         super();
 
         this.space = this.spaceRegistry.joinSpace(spaceName);
+        bindMuteEventsToSpace(this.space);
 
         this.spaceFilter = this.space.watchLiveStreamingUsers();
 
@@ -146,15 +148,16 @@ export class JitsiBroadcastSpace extends EventTarget implements BroadcastSpace {
                     const filtered = new Map<string, JitsiTrackWrapper>();
                     for (const [participantId, stream] of $streamStore) {
                         let found = false;
-                        if (stream.spaceUser !== undefined) {
-                            if ($users.has(stream.spaceUser.id)) {
+                        const spaceUser = stream.getImmediateSpaceUser();
+                        if (spaceUser !== undefined) {
+                            if ($users.has(spaceUser.id)) {
                                 filtered.set(participantId, stream);
                             }
                             continue;
                         }
                         for (const user of $users.values()) {
                             if (user.jitsiParticipantId === stream.uniqueId) {
-                                stream.spaceUser = user;
+                                stream.setSpaceUser(user);
                                 filtered.set(participantId, stream);
                                 found = true;
                                 break;

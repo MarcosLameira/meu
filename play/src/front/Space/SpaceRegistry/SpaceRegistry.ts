@@ -7,19 +7,46 @@ import { RoomConnection } from "../../Connection/RoomConnection";
 import { SpaceRegistryInterface } from "./SpaceRegistryInterface";
 
 /**
+ * The subset of properties of RoomConnection that are used by the SpaceRegistry / Space / SpaceFilter class.
+ * This interface has a single purpose: making the creation of test doubles easier in unit tests.
+ */
+export type RoomConnectionForSpacesInterface = Pick<
+    RoomConnection,
+    | "addSpaceUserMessageStream"
+    | "updateSpaceUserMessageStream"
+    | "removeSpaceUserMessageStream"
+    | "updateSpaceMetadataMessageStream"
+    | "spacePublicMessageEvent"
+    | "spacePrivateMessageEvent"
+    | "emitPrivateSpaceEvent"
+    | "emitPublicSpaceEvent"
+    | "emitRemoveSpaceFilter"
+    | "emitAddSpaceFilter"
+    | "emitUpdateSpaceFilter"
+    | "emitLeaveSpace"
+    | "emitJoinSpace"
+    | "emitUpdateSpaceMetadata"
+    // FIXME: looks like a hack
+    | "emitJitsiParticipantIdSpace"
+>;
+
+/**
  * This class is in charge of creating, joining, leaving and deleting Spaces.
  * It acts both as a factory and a registry.
  */
 export class SpaceRegistry implements SpaceRegistryInterface {
+    private spaces: Map<string, Space> = new Map<string, Space>();
     private addSpaceUserMessageStreamSubscription: Subscription;
     private updateSpaceUserMessageStreamSubscription: Subscription;
     private removeSpaceUserMessageStreamSubscription: Subscription;
     private updateSpaceMetadataMessageStreamSubscription: Subscription;
     private proximityPublicMessageEventSubscription: Subscription;
+    private proximityPrivateMessageEventSubscription: Subscription;
 
-    constructor(private roomConnection: RoomConnection, private spaces: Map<string, Space> = new Map<string, Space>()) {
+    constructor(private roomConnection: RoomConnectionForSpacesInterface) {
         this.addSpaceUserMessageStreamSubscription = roomConnection.addSpaceUserMessageStream.subscribe((message) => {
             if (!message.user || !message.filterName) {
+                console.error(message);
                 throw new Error("addSpaceUserMessage is missing a user or a filterName");
             }
 
@@ -68,11 +95,27 @@ export class SpaceRegistry implements SpaceRegistryInterface {
             }
         );
 
-        this.proximityPublicMessageEventSubscription = roomConnection.proximityPublicMessageEvent.subscribe(
-            (message) => {
-                this.spaces.get(message.spaceName)?.dispatchPublicMessage(message);
+        this.proximityPublicMessageEventSubscription = roomConnection.spacePublicMessageEvent.subscribe((message) => {
+            const space = this.spaces.get(message.spaceName);
+            if (!space) {
+                console.warn(
+                    `Received a public message for a space that does not exist: "${message.spaceName}". This should not happen unless the space was left a few milliseconds before.`
+                );
+                return;
             }
-        );
+            space.dispatchPublicMessage(message);
+        });
+
+        this.proximityPrivateMessageEventSubscription = roomConnection.spacePrivateMessageEvent.subscribe((message) => {
+            const space = this.spaces.get(message.spaceName);
+            if (!space) {
+                console.warn(
+                    `Received a private message for a space that does not exist: "${message.spaceName}". This should not happen unless the space was left a few milliseconds before.`
+                );
+                return;
+            }
+            space.dispatchPrivateMessage(message);
+        });
     }
 
     joinSpace(spaceName: string, metadata: Map<string, unknown> = new Map<string, unknown>()): SpaceInterface {
@@ -109,6 +152,7 @@ export class SpaceRegistry implements SpaceRegistryInterface {
         this.removeSpaceUserMessageStreamSubscription.unsubscribe();
         this.updateSpaceMetadataMessageStreamSubscription.unsubscribe();
         this.proximityPublicMessageEventSubscription.unsubscribe();
+        this.proximityPrivateMessageEventSubscription.unsubscribe();
 
         for (const space of this.spaces.values()) {
             space.destroy();

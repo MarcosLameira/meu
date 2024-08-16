@@ -23,10 +23,6 @@ import {
     JoinRoomMessage,
     KickOffMessage,
     LockGroupPromptMessage,
-    MuteMicrophoneEverybodyMessage,
-    MuteMicrophoneMessage,
-    MuteVideoEverybodyMessage,
-    MuteVideoMessage,
     PlayerDetailsUpdatedMessage,
     QueryMessage,
     RemoveSpaceUserMessage,
@@ -301,9 +297,6 @@ export class SocketManager {
         const webrtcSignalToClientMessage: Partial<WebRtcSignalToClientMessage> = {
             userId: user.id,
             signal: data.signal,
-            webRtcSpaceName: `webrtc_${user.group ? user.group.getId() : "1"}-${Buffer.from(room.roomUrl).toString(
-                "base64"
-            )}`,
         };
 
         // TODO: only compute credentials if data.signal.type === "offer"
@@ -338,9 +331,6 @@ export class SocketManager {
         const webrtcSignalToClientMessage: Partial<WebRtcSignalToClientMessage> = {
             userId: user.id,
             signal: data.signal,
-            webRtcSpaceName: `webrtc_${user.group ? user.group.getId() : "1"}-${Buffer.from(room.id).toString(
-                "base64"
-            )}`,
         };
 
         // TODO: only compute credentials if data.signal.type === "offer"
@@ -663,7 +653,6 @@ export class SocketManager {
             const webrtcStartMessage1: Partial<WebRtcStartMessage> = {
                 userId: otherUser.id,
                 initiator: true,
-                webRtcSpaceName: `webrtc_${group.getId()}-${Buffer.from(group.getRoomId()).toString("base64")}`,
             };
             if (TURN_STATIC_AUTH_SECRET) {
                 const { username, password } = this.getTURNCredentials(
@@ -684,7 +673,6 @@ export class SocketManager {
             const webrtcStartMessage2: Partial<WebRtcStartMessage> = {
                 userId: user.id,
                 initiator: false,
-                webRtcSpaceName: `webrtc_${group.getId()}-${Buffer.from(group.getRoomId()).toString("base64")}`,
             };
             if (TURN_STATIC_AUTH_SECRET) {
                 const { username, password } = this.getTURNCredentials(user.id.toString(), TURN_STATIC_AUTH_SECRET);
@@ -1534,81 +1522,20 @@ export class SocketManager {
         });
     }
 
-    handleMuteMicrophoneSpaceUserMessage(pusher: SpacesWatcher, muteMicrophoneSpaceUserMessage: MuteMicrophoneMessage) {
-        const space = this.spaces.get(muteMicrophoneSpaceUserMessage.spaceName);
-        if (!space) return;
-        pusher.write({
-            message: {
-                $case: "muteMicrophoneMessage",
-                muteMicrophoneMessage: {
-                    spaceName: muteMicrophoneSpaceUserMessage.spaceName,
-                    userId: muteMicrophoneSpaceUserMessage.userId,
-                    filterName: muteMicrophoneSpaceUserMessage.filterName,
-                },
-            },
-        });
-    }
-
-    handleMuteVideoSpaceUserMessage(pusher: SpacesWatcher, muteVideoSpaceUserMessage: MuteVideoMessage) {
-        const space = this.spaces.get(muteVideoSpaceUserMessage.spaceName);
-        if (!space) return;
-        pusher.write({
-            message: {
-                $case: "muteVideoMessage",
-                muteVideoMessage: {
-                    spaceName: muteVideoSpaceUserMessage.spaceName,
-                    userId: muteVideoSpaceUserMessage.userId,
-                    filterName: muteVideoSpaceUserMessage.filterName,
-                },
-            },
-        });
-    }
-
-    handleMuteMicrophoneEverybodySpaceUserMessage(
-        pusher: SpacesWatcher,
-        muteMicrophoneEverybodySpaceUserMessage: MuteMicrophoneEverybodyMessage
-    ) {
-        const space = this.spaces.get(muteMicrophoneEverybodySpaceUserMessage.spaceName);
-        if (!space) return;
-        pusher.write({
-            message: {
-                $case: "muteMicrophoneEverybodyMessage",
-                muteMicrophoneEverybodyMessage: {
-                    spaceName: muteMicrophoneEverybodySpaceUserMessage.spaceName,
-                    userId: muteMicrophoneEverybodySpaceUserMessage.userId,
-                    filterName: muteMicrophoneEverybodySpaceUserMessage.filterName,
-                },
-            },
-        });
-    }
-
-    handleMuteVideoEverybodySpaceUserMessage(
-        pusher: SpacesWatcher,
-        muteVideoEverybodySpaceUserMessage: MuteVideoEverybodyMessage
-    ) {
-        const space = this.spaces.get(muteVideoEverybodySpaceUserMessage.spaceName);
-        if (!space) return;
-        pusher.write({
-            message: {
-                $case: "muteVideoEverybodyMessage",
-                muteVideoEverybodyMessage: {
-                    spaceName: muteVideoEverybodySpaceUserMessage.spaceName,
-                    userId: muteVideoEverybodySpaceUserMessage.userId,
-                    filterName: muteVideoEverybodySpaceUserMessage.filterName,
-                },
-            },
-        });
-    }
-
     handlePublicEvent(pusher: SpacesWatcher, publicEvent: PublicEvent) {
         const space = this.spaces.get(publicEvent.spaceName);
-        if (!space) return;
-        pusher.write({
-            message: {
-                $case: "publicEvent",
-                publicEvent,
-            },
-        });
+        if (!space) {
+            throw new Error(`Could not find space ${publicEvent.spaceName} to dispatch public event`);
+        }
+        space.dispatchPublicEvent(publicEvent);
+    }
+
+    handlePrivateEvent(pusher: SpacesWatcher, privateEvent: PrivateEvent) {
+        const space = this.spaces.get(privateEvent.spaceName);
+        if (!space) {
+            throw new Error(`Could not find space ${privateEvent.spaceName} to dispatch public event`);
+        }
+        space.dispatchPrivateEvent(privateEvent);
     }
 
     private handleSendEventQuery(gameRoom: GameRoom, user: User, sendEventQuery: SendEventQuery) {
@@ -1662,6 +1589,7 @@ export class SocketManager {
         }
     }
 
+    // TODO: connect this.
     handleKickOffUserMessage(user: User, userKickedUuid: string) {
         const group = user.group;
         if (!group) {
@@ -1677,167 +1605,6 @@ export class SocketManager {
         }
         // TODO fixme to notify only user kiked
         group.setOutOfBounds(true);
-    }
-
-    handeMuteParticipantIdMessage(user: User, userMutedUuid: string) {
-        const group = user.group;
-        if (!group) {
-            return;
-        }
-        const usersMuted = group.getUsers().filter((user) => user.uuid === userMutedUuid);
-        // create mute event
-        let serverToClientMessage: ServerToClientMessage = {
-            message: {
-                $case: "mutedMessage",
-                mutedMessage: {
-                    userUuid: user.uuid,
-                    message: "muted",
-                },
-            },
-        };
-        if (!user.tags.includes("admin")) {
-            serverToClientMessage = {
-                message: {
-                    $case: "askMutedMessage",
-                    askMutedMessage: {
-                        userUuid: user.uuid,
-                        message: "muted",
-                    },
-                },
-            };
-        }
-        for (const mutedUser of usersMuted) {
-            // send mute event
-            mutedUser.socket.write(serverToClientMessage);
-        }
-    }
-
-    handleMuteEveryBodyParticipantMessage(user: User) {
-        const group = user.group;
-        if (!group) {
-            return;
-        }
-        if (!user.tags.includes("admin")) {
-            return;
-        }
-        for (const mutedUser of group.getUsers().values()) {
-            // not mute the user who sent the message
-            if (mutedUser.uuid === user.uuid) continue;
-            // send mute event
-            const serverToClientMessage: ServerToClientMessage = {
-                message: {
-                    $case: "mutedMessage",
-                    mutedMessage: {
-                        userUuid: user.uuid,
-                        message: "muted",
-                    },
-                },
-            };
-            mutedUser.socket.write(serverToClientMessage);
-        }
-    }
-
-    handeMuteVideoParticipantIdMessage(user: User, userMutedUuid: string) {
-        const group = user.group;
-        if (!group) {
-            return;
-        }
-        const usersMuted = group.getUsers().filter((user) => user.uuid === userMutedUuid);
-        // create mute event
-        let serverToClientMessage: ServerToClientMessage = {
-            message: {
-                $case: "mutedVideoMessage",
-                mutedVideoMessage: {
-                    userUuid: user.uuid,
-                    message: "mutedVideo",
-                },
-            },
-        };
-        if (!user.tags.includes("admin")) {
-            serverToClientMessage = {
-                message: {
-                    $case: "askMutedVideoMessage",
-                    askMutedVideoMessage: {
-                        userUuid: user.uuid,
-                        message: "mutedVideo",
-                    },
-                },
-            };
-        }
-        for (const mutedUser of usersMuted) {
-            // send mute event
-            mutedUser.socket.write(serverToClientMessage);
-        }
-    }
-
-    handleMuteVideoEveryBodyParticipantMessage(user: User) {
-        const group = user.group;
-        if (!group) {
-            return;
-        }
-        if (!user.tags.includes("admin")) {
-            return;
-        }
-        for (const mutedUser of group.getUsers().values()) {
-            // not mute the user who sent the message
-            if (mutedUser.uuid === user.uuid) continue;
-            // send mute event
-            const serverToClientMessage: ServerToClientMessage = {
-                message: {
-                    $case: "mutedVideoMessage",
-                    mutedVideoMessage: {
-                        userUuid: user.uuid,
-                        message: "mutedVideo",
-                    },
-                },
-            };
-            mutedUser.socket.write(serverToClientMessage);
-        }
-    }
-
-    // handle proximity typing message
-    handlePublicEventMessage(user: User, publicEvent: PublicEvent) {
-        const group = user.group;
-        if (!group) {
-            return;
-        }
-        const newEvent = {
-            ...publicEvent,
-            senderUserId: user.id,
-        };
-        const receiverUsers = group.getUsers();
-        for (const receiverUser of receiverUsers) {
-            receiverUser.socket.write({
-                message: {
-                    $case: "publicEvent",
-                    publicEvent: newEvent,
-                },
-            });
-        }
-    }
-
-    handlePrivateEventMessage(user: User, privateEvent: PrivateEvent) {
-        const group = user.group;
-        if (!group) {
-            return;
-        }
-        const newEvent = {
-            ...privateEvent,
-            senderUserId: user.id,
-        };
-
-        const receiverUser = group.getUsers().find((user) => user.id === privateEvent.receiverUserId);
-        if (receiverUser == undefined) {
-            console.warn("receiverUser is undefined");
-            return;
-        }
-
-        receiverUser.socket.write({
-            message: {
-                $case: "privateEvent",
-                privateEvent: newEvent,
-            },
-        });
     }
 }
 

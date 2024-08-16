@@ -12,6 +12,7 @@ import { Space } from "../../src/pusher/models/Space";
 import { BackSpaceConnection } from "../../src/pusher/models/Websocket/SocketData";
 import { Socket } from "../../src/pusher/services/SocketManager";
 import { Zone } from "../../src/pusher/models/Zone";
+import { EventProcessor } from "../../src/pusher/models/EventProcessor";
 describe("Space", () => {
     let eventsWatcher: PusherToBackSpaceMessage[] = [];
     const backSpaceConnection = mock<BackSpaceConnection>({
@@ -102,7 +103,7 @@ describe("Space", () => {
     const client = mock<Socket>({
         getUserData: vi.fn().mockReturnValue(clientData),
     });
-    const space = new Space("test", backSpaceConnection, 1, client);
+    const space = new Space("test", "localTest", backSpaceConnection, 1, client, new EventProcessor());
     it("should return true because Space is empty", () => {
         expect(space.isEmpty()).toBe(true);
     });
@@ -123,7 +124,7 @@ describe("Space", () => {
             characterTextures: [],
             tags: [],
         });
-        space.addUser(spaceUser);
+        space.addUser(spaceUser, {} as unknown as Socket);
         expect(eventsClient.some((message) => message.message?.$case === "addSpaceUserMessage")).toBe(true);
         expect(eventsWatcher.some((message) => message.message?.$case === "addSpaceUserMessage")).toBe(true);
     });
@@ -188,6 +189,9 @@ describe("Space", () => {
         expect(user?.screenSharingState).toBe(true);
         expect(user?.visitCardUrl).toBe("test");
     });
+    // Previously, the test developed by César was expecting "no delta" (because user is already sent, and delta return nothing)
+    // But this does not seem logical and was probably testing a bug. Indeed, when adding a new filter, we send all the users matching the filter
+    // even if another filter already exists.
     it("should add the name filter 'test' and send me the delta (nothing because user is already sent, and delta return nothing)", () => {
         eventsClient = [];
         const filter: SpaceFilterMessage = {
@@ -202,7 +206,7 @@ describe("Space", () => {
         };
         client.getUserData().spacesFilters.set("test", [filter]);
         space.handleAddFilter(client, { spaceFilterMessage: filter });
-        expect(eventsClient.length).toBe(0);
+        expect(eventsClient.length).toBe(1);
     });
     it("should update the name filter 'john' and send me the delta (remove userMessage)", () => {
         const spaceFilterMessage: SpaceFilterMessage = {
@@ -246,7 +250,7 @@ describe("Space", () => {
             characterTextures: [],
             tags: [],
         });
-        space.addUser(spaceUser);
+        space.addUser(spaceUser, {} as unknown as Socket);
         expect(eventsClient.some((message) => message.message?.$case === "addSpaceUserMessage")).toBe(true);
         const message = eventsClient.find((message) => message.message?.$case === "addSpaceUserMessage");
         expect(message).toBeDefined();
@@ -260,7 +264,7 @@ describe("Space", () => {
         expect(user).toBeDefined();
         expect(user?.name).toBe("johnny");
     });
-    it("should remove the name filter and send me the delta (add userMessage)", () => {
+    it("should remove the name filter and NOT send me anything", () => {
         client.getUserData().spacesFilters = new Map<string, SpaceFilterMessage[]>([
             [
                 "test",
@@ -284,18 +288,7 @@ describe("Space", () => {
                 filter: undefined,
             },
         });
-        expect(eventsClient.some((message) => message.message?.$case === "addSpaceUserMessage")).toBe(true);
-        const message = eventsClient.find((message) => message.message?.$case === "addSpaceUserMessage");
-        expect(message).toBeDefined();
-        const subMessage = message?.message;
-        if (!subMessage || subMessage.$case !== "addSpaceUserMessage") {
-            throw new Error("subMessage is not defined");
-        }
-        const addSpaceUserMessage = subMessage.addSpaceUserMessage;
-        expect(addSpaceUserMessage).toBeDefined();
-        const user = addSpaceUserMessage.user;
-        expect(user).toBeDefined();
-        expect(user?.id).toBe(1);
+        expect(eventsClient.some((message) => message.message?.$case === "addSpaceUserMessage")).toBe(false);
     });
 
     it("should notify client and back that a user is removed", () => {

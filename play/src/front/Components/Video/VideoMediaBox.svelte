@@ -240,7 +240,7 @@
     on:click={() => analyticsClient.pinMeetingAction()}
     on:click={() => hightlight()}
 >
-    <ActionMediaBox {embedScreen} trackStreamWraper={peer} {videoEnabled} />
+    <ActionMediaBox {embedScreen} trackStreamWrapper={peer} {videoEnabled} />
 
     <div
         style={videoEnabled

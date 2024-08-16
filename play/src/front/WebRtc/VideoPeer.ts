@@ -5,7 +5,6 @@ import Peer from "simple-peer/simplepeer.min.js";
 import type { RoomConnection } from "../Connection/RoomConnection";
 import { localStreamStore, videoBandwidthStore } from "../Stores/MediaStore";
 import { playersStore } from "../Stores/PlayersStore";
-import { newChatMessageSubject } from "../Stores/ChatStore";
 import { getIceServersConfig, getSdpTransform } from "../Components/Video/utils";
 import { SoundMeter } from "../Phaser/Components/SoundMeter";
 import { gameManager } from "../Phaser/Game/GameManager";
@@ -14,12 +13,11 @@ import { TrackStreamWrapperInterface } from "../Streaming/Contract/TrackStreamWr
 import { TrackInterface } from "../Streaming/Contract/TrackInterface";
 import { showReportScreenStore } from "../Stores/ShowReportScreenStore";
 import { RemotePlayerData } from "../Phaser/Game/RemotePlayersRepository";
-import { iframeListener } from "../Api/IframeListener";
+import { SpaceFilterInterface, SpaceUserExtended } from "../Space/SpaceFilter/SpaceFilter";
+import { lookupUserById } from "../Space/Utils/UserLookup";
 import type { ConstraintMessage, ObtainedMediaStreamConstraints } from "./P2PMessages/ConstraintMessage";
 import type { UserSimplePeerInterface } from "./SimplePeer";
 import { blackListManager } from "./BlackListManager";
-import { MessageMessage } from "./P2PMessages/MessageMessage";
-import { MessageStatusMessage } from "./P2PMessages/MessageStatusMessage";
 import { P2PMessage } from "./P2PMessages/P2PMessage";
 import { BlockMessage } from "./P2PMessages/BlockMessage";
 import { UnblockMessage } from "./P2PMessages/UnblockMessage";
@@ -45,7 +43,6 @@ export class VideoPeer extends Peer implements TrackStreamWrapperInterface {
     private readonly _constraintsStore: Writable<ObtainedMediaStreamConstraints | null>;
     private newMessageSubscription: Subscription | undefined;
     private closing = false; //this is used to prevent destroy() from being called twice
-    private newWritingStatusMessageSubscription: Subscription | undefined;
     private volumeStoreSubscribe?: Unsubscriber;
     private readonly localStreamStoreSubscribe: Unsubscriber;
     private readonly apparentMediaConstraintStoreSubscribe: Unsubscriber;
@@ -55,7 +52,7 @@ export class VideoPeer extends Peer implements TrackStreamWrapperInterface {
         initiator: boolean,
         public readonly player: RemotePlayerData,
         private connection: RoomConnection,
-        private spaceName?: string
+        private spaceFilter: Promise<SpaceFilterInterface>
     ) {
         const bandwidth = get(videoBandwidthStore);
         super({
@@ -151,34 +148,6 @@ export class VideoPeer extends Peer implements TrackStreamWrapperInterface {
                 const color = playersStore.getPlayerById(this.userId)?.color;
                 proximityRoomChat.addIncomingUser(this.userId, this.userUuid, this.player.name, color ?? undefined);
             }*/
-
-            this.newMessageSubscription = newChatMessageSubject.subscribe((newMessage) => {
-                if (!newMessage) return;
-                this.write(
-                    new Buffer(
-                        JSON.stringify({
-                            type: "message",
-                            message: newMessage,
-                        } as MessageMessage)
-                    )
-                );
-            });
-
-            this.newWritingStatusMessageSubscription = iframeListener.newChatMessageWritingStatusStream.subscribe(
-                (status) => {
-                    if (status === undefined) {
-                        return;
-                    }
-                    this.write(
-                        new Buffer(
-                            JSON.stringify({
-                                type: "message_status",
-                                message: status,
-                            } as MessageStatusMessage)
-                        )
-                    );
-                }
-            );
         });
 
         this.on("data", (chunk: Buffer) => {
@@ -188,18 +157,6 @@ export class VideoPeer extends Peer implements TrackStreamWrapperInterface {
                 switch (message.type) {
                     case "constraint": {
                         this._constraintsStore.set(message.message);
-                        break;
-                    }
-                    case "message": {
-                        if (!blackListManager.isBlackListed(this.userUuid)) {
-                            //chatMessagesService.addExternalMessage(this.userId, message.message);
-                        }
-                        break;
-                    }
-                    case "message_status": {
-                        if (!blackListManager.isBlackListed(this.userUuid)) {
-                            //writingStatusMessageStore.addWritingStatus(this.userId, message.message);
-                        }
                         break;
                     }
                     case "blocked": {
@@ -325,7 +282,6 @@ export class VideoPeer extends Peer implements TrackStreamWrapperInterface {
             this.onBlockSubscribe.unsubscribe();
             this.onUnBlockSubscribe.unsubscribe();
             this.newMessageSubscription?.unsubscribe();
-            this.newWritingStatusMessageSubscription?.unsubscribe();
 
             if (this.localStreamStoreSubscribe) this.localStreamStoreSubscribe();
             if (this.apparentMediaConstraintStoreSubscribe) this.apparentMediaConstraintStoreSubscribe();
@@ -380,37 +336,12 @@ export class VideoPeer extends Peer implements TrackStreamWrapperInterface {
     isLocal(): boolean {
         throw new Error("Method not implemented.");
     }
-    // FIXME: this method does not belong here.
-    // Move the mute audio/video to the space public/private events
-    muteAudioParticipant(): void {
-        this.connection.emitMuteParticipantIdSpace("peer", this.userUuid);
-    }
-    // FIXME: this method does not belong here.
-    // Move the mute audio/video to the space public/private events
-    muteAudioEveryBody(): void {
-        this.connection.emitMuteEveryBodySpace("peer");
-    }
-    // FIXME: this method does not belong here.
-    // Move the mute audio/video to the space public/private events
-    muteVideoParticipant(): void {
-        this.connection.emitMuteVideoParticipantIdSpace("peer", this.userUuid);
-    }
-    // FIXME: this method does not belong here.
-    // Move the mute audio/video to the space public/private events
-    muteVideoEverybody(): void {
-        this.connection.emitMuteVideoEveryBodySpace("peer");
-    }
-    // FIXME: this method does not belong here.
-    // Move the mute audio/video to the space public/private events
-    ban() {
-        throw new Error("Method not implemented.");
-    }
-    // FIXME: this method does not belong here.
-    // Move the mute audio/video to the space public/private events
-    kickoff(): void {
-        this.connection.emitKickOffUserMessage(this.userUuid, "peer");
-    }
     blockOrReportUser(): void {
         showReportScreenStore.set({ userId: this.userId, userName: this.player.name });
+    }
+
+    public async getExtendedSpaceUser(): Promise<SpaceUserExtended> {
+        const spaceFilter = await this.spaceFilter;
+        return lookupUserById(this.userId, spaceFilter, 30_000);
     }
 }
