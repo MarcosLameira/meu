@@ -166,7 +166,8 @@ import { ProximityChatConnection } from "../../Chat/Connection/Proximity/Proximi
 import { ProximityChatRoom } from "../../Chat/Connection/Proximity/ProximityChatRoom";
 import { ExtensionModuleStatusSynchronization } from "../../Rules/StatusRules/ExtensionModuleStatusSynchronization";
 import { calendarEventsStore, isActivatedStore } from "../../Stores/CalendarStore";
-import { ExtensionModule, RoomMetadataType } from "../../ExternalModule/ExtensionModule";
+import { externalSvelteComponentStore } from "../../Stores/Utils/externalSvelteComponentStore";
+import { RoomMetadataType } from "../../ExternalModule/ExtensionModule";
 import { GameMapFrontWrapper } from "./GameMap/GameMapFrontWrapper";
 import { gameManager } from "./GameManager";
 import { EmoteManager } from "./EmoteManager";
@@ -332,7 +333,6 @@ export class GameScene extends DirtyScene {
         this.currentCompanionTextureReject = reject;
     });
     public chatConnection!: ChatConnectionInterface;
-    public extensionModule: ExtensionModule | undefined = undefined;
 
     // FIXME: we need to put a "unknown" instead of a "any" and validate the structure of the JSON we are receiving.
 
@@ -1025,8 +1025,11 @@ export class GameScene extends DirtyScene {
         this.playersMovementEventDispatcher.cleanup();
         this.gameMapFrontWrapper?.close();
         this.followManager?.close();
-        this.extensionModule?.destroy();
-        extensionModuleStore.set(undefined);
+
+        // We need to destroy all the entities
+        get(extensionModuleStore).forEach((extensionModule) => {
+            extensionModule.destroy();
+        });
 
         LocalSpaceProviderSingleton.getInstance().destroy();
 
@@ -2060,29 +2063,32 @@ export class GameScene extends DirtyScene {
                 return;
             }
 
-            if (parsedRoomMetadata.data.msteams === true) {
+            for (const module of parsedRoomMetadata.data.modules ?? []) {
                 (async () => {
                     try {
-                        const extensionModule = await import("../../../ms-teams/MSTeams");
-                        this.extensionModule = extensionModule.default;
+                        const extensionModule = await import(`../../../external-modules/${module}/index`);
+                        const defaultExtensionModule = extensionModule.default;
 
-                        this.extensionModule.init(parsedRoomMetadata.data, {
+                        defaultExtensionModule.init(parsedRoomMetadata.data, {
                             workadventureStatusStore: availabilityStatusStore,
-                            onExtensionModuleStatusChange: ExtensionModuleStatusSynchronization.onStatusChange,
-                            getOauthRefreshToken: this.connection?.getOauthRefreshToken.bind(this.connection),
-                            calendarEventsStoreUpdate: calendarEventsStore.update,
                             userAccessToken: localUserStore.getAuthToken()!,
-                            adminUrl: ADMIN_URL,
                             roomId: this.roomUrl,
                             externalModuleMessage: this.connection!.externalModuleMessage,
+                            onExtensionModuleStatusChange: ExtensionModuleStatusSynchronization.onStatusChange,
+                            calendarEventsStoreUpdate: calendarEventsStore.update,
                             openCoWebSite: openCoWebSiteWithoutSource,
                             closeCoWebsite,
+                            getOauthRefreshToken: this.connection?.getOauthRefreshToken.bind(this.connection),
+                            adminUrl: ADMIN_URL,
+                            externalSvelteComponent: externalSvelteComponentStore,
                         });
-                        // TODO change that to check if the calendar synchro is enabled from admin
-                        if (parsedRoomMetadata.data.teamsstings.calendar) isActivatedStore.set(true);
-                        extensionModuleStore.set(this.extensionModule);
+
+                        if (defaultExtensionModule.calendarSynchronised) isActivatedStore.set(true);
+                        extensionModuleStore.add(defaultExtensionModule);
                     } catch (error) {
                         console.warn("Extension module initialization cancelled", error);
+                    } finally {
+                        console.info(`Extension module ${module} initialization finished`);
                     }
                 })().catch((error) => console.error(error));
             }
