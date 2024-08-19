@@ -1,4 +1,4 @@
-import { Readable, Writable, get, writable } from "svelte/store";
+import { Readable, Writable, get, readable, writable } from "svelte/store";
 import { PartialSpaceUser } from "@workadventure/messages";
 import { ChatConnectionInterface, ChatRoom, ChatUser, ConnectionStatus, CreateRoomOptions } from "../ChatConnection";
 import { SpaceUserExtended } from "../../../Space/SpaceFilter/SpaceFilter";
@@ -15,6 +15,7 @@ export class ProximityChatConnection implements ChatConnectionInterface {
     invitations = writable([]);
     isEncryptionRequiredAndNotSet: Readable<boolean> = writable(false);
     isGuest: Readable<boolean> = writable(false);
+    roomBySpaceRoom: Readable<Map<ChatRoom | undefined, ChatRoom[]>> = readable(new Map());
 
     public spaceId: Writable<string | undefined> = writable(undefined);
     public spaceName: Writable<string | undefined> = writable(undefined);
@@ -25,6 +26,7 @@ export class ProximityChatConnection implements ChatConnectionInterface {
             return rooms;
         });
     }
+    
 
     addUserFromSpace(user: SpaceUserExtended): void {
         // if the user isn't already in the list, don't add it
