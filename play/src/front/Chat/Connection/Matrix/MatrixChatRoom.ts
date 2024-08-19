@@ -45,9 +45,13 @@ export class MatrixChatRoom implements ChatRoom {
     isEncrypted!: Writable<boolean>;
     typingMembers: Writable<Array<{ id: string; name: string | null; avatarUrl: string | null }>>;
 
-    constructor(private matrixRoom: Room, private spaceStore = LocalSpaceProviderSingleton.getInstance(),private playNewMessageSound = ()=>{
-        gameManager.getCurrentGameScene().playSound("new-message");
-    } ) {
+    constructor(
+        private matrixRoom: Room,
+        private spaceStore = LocalSpaceProviderSingleton.getInstance(),
+        private playNewMessageSound = () => {
+            gameManager.getCurrentGameScene().playSound("new-message");
+        }
+    ) {
         this.id = matrixRoom.roomId;
         this.name = writable(matrixRoom.name);
         this.type = this.getMatrixRoomType();
@@ -207,7 +211,7 @@ export class MatrixChatRoom implements ChatRoom {
                     } else {
                         this.handleNewMessage(event);
                         const senderID = event.getSender();
-                        if(senderID!==this.matrixRoom.client.getSafeUserId()){
+                        if (senderID !== this.matrixRoom.client.getSafeUserId()) {
                             this.playNewMessageSound();
                         }
                     }

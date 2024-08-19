@@ -70,9 +70,14 @@ export class ProximityChatRoom implements ChatRoom {
         spaceId: undefined,
     } as ChatUser;
 
-    constructor(private _connection: ProximityChatConnection, private _userId: number, private _userUuid: string,private playNewMessageSound = ()=>{
-        gameManager.getCurrentGameScene().playSound("new-message");
-    }) {
+    constructor(
+        private _connection: ProximityChatConnection,
+        private _userId: number,
+        private _userUuid: string,
+        private playNewMessageSound = () => {
+            gameManager.getCurrentGameScene().playSound("new-message");
+        }
+    ) {
         this.typingMembers = writable([]);
     }
 
@@ -168,9 +173,8 @@ export class ProximityChatRoom implements ChatRoom {
         // Add message to the list
         this.messages.push(newMessage);
 
-
         this.playNewMessageSound();
-        
+
         // Send bubble message to WorkAdventure scripting API
         try {
             iframeListener.sendUserInputChat(message, senderUserId);
