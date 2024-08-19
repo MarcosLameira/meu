@@ -1,6 +1,5 @@
 <script lang="ts">
     import { afterUpdate, beforeUpdate, onMount } from "svelte";
-    import { get } from "svelte/store";
     import { ChatRoom } from "../../Connection/ChatConnection";
     import { proximityRoomConnection, selectedChatMessageToReply, selectedRoom } from "../../Stores/ChatStore";
     import Avatar from "../Avatar.svelte";
@@ -17,18 +16,12 @@
     let autoScroll = true;
     let onScrollTop = false;
 
-    async function loadPreviousMessageOnScrollTop() {
-        while (messageListRef.scrollTop === 0 && get(room.hasPreviousMessage)) {
-            // eslint-disable-next-line no-await-in-loop
-            await room.loadMorePreviousMessages();
-            messageListRef.scrollTop = 50;
-        }
-    }
+    let scrollTimer: ReturnType<typeof setTimeout>;
 
     onMount(() => {
         scrollToMessageListBottom();
         if (messageListRef) {
-            loadPreviousMessageOnScrollTop().catch((error) => console.error(error));
+            room.loadMorePreviousMessages().catch((error) => console.error(error));
         }
     });
 
@@ -43,7 +36,6 @@
     afterUpdate(() => {
         room.setTimelineAsRead();
         const oldFirstListItem = messageListRef.querySelector<HTMLLIElement>('li[data-first-li="true"]');
-        
         if (autoScroll) {
             scrollToMessageListBottom();
         }
@@ -59,12 +51,21 @@
     });
 
     function scrollToMessageListBottom() {
-        messageListRef.scrollTop =  messageListRef.scrollHeight
+        messageListRef.scrollTop = messageListRef.scrollHeight;
     }
 
     function goBackAndClearSelectedChatMessage() {
         selectedChatMessageToReply.set(null);
         selectedRoom.set(undefined);
+    }
+
+    function handleScroll() {
+        clearTimeout(scrollTimer);
+        scrollTimer = setTimeout(() => {
+            if (messageListRef.scrollTop === 0) {
+                room.loadMorePreviousMessages().catch((error) => console.error(error));
+            }
+        }, 100);
     }
 
     $: messages = room?.messages;
@@ -83,29 +84,32 @@
             <p class="tw-m-0 tw-p-0 tw-text-gray-400">{$roomName}</p>
             <span class="tw-flex-1" />
         </div>
-        <div bind:this={messageListRef} class="tw-flex tw-overflow-auto tw-h-full {$messages.length && "tw-items-end" } " on:scroll={() => loadPreviousMessageOnScrollTop()}>
-            <ul
-
-            class="tw-list-none tw-p-0 tw-flex-1 tw-flex tw-flex-col tw-max-h-full"
+        <div
+            bind:this={messageListRef}
+            class="tw-flex tw-overflow-auto tw-h-full {$messages.length && 'tw-items-end'} "
+            on:scroll={() => {
+                handleScroll();
+            }}
         >
-            {#if room.id === "proximity" && $connectedUsers !== undefined}
-                <div class="tw-flex tw-flex-row tw-items-center tw-gap-2">
-                    {#each [...$connectedUsers] as [userId, user] (userId)}
-                        <div class="avatar">
-                            <Avatar avatarUrl={user.avatarUrl} fallbackName={user?.username} color={user?.color} />
-                        </div>
-                    {/each}
-                </div>
-            {/if}
-            {#if $messages.length === 0}
-                <p class="tw-self-center tw-text-md tw-text-gray-500">{$LL.chat.nothingToDisplay()}</p>
-            {/if}
-            {#each $messages as message (message.id)}
-                <li data-event-id={message.id} >
-                    <Message {message} reactions={$messageReaction.get(message.id)} />
-                </li>
-            {/each}
-        </ul>
+            <ul class="tw-list-none tw-p-0 tw-flex-1 tw-flex tw-flex-col tw-max-h-full">
+                {#if room.id === "proximity" && $connectedUsers !== undefined}
+                    <div class="tw-flex tw-flex-row tw-items-center tw-gap-2">
+                        {#each [...$connectedUsers] as [userId, user] (userId)}
+                            <div class="avatar">
+                                <Avatar avatarUrl={user.avatarUrl} fallbackName={user?.username} color={user?.color} />
+                            </div>
+                        {/each}
+                    </div>
+                {/if}
+                {#if $messages.length === 0}
+                    <p class="tw-self-center tw-text-md tw-text-gray-500">{$LL.chat.nothingToDisplay()}</p>
+                {/if}
+                {#each $messages as message (message.id)}
+                    <li data-event-id={message.id}>
+                        <Message {message} reactions={$messageReaction.get(message.id)} />
+                    </li>
+                {/each}
+            </ul>
         </div>
 
         {#if $typingMembers.length > 0}
