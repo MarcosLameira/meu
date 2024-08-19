@@ -124,6 +124,10 @@ message LeaveChatRoomAreaMessage {
   string roomID = 1;
 }
 
+message DeleteChatRoomAreaMessage {
+  string roomID = 1;
+}
+
 message ChangeChatRoomAreaNameMessage{
   string roomID = 1;
   string name = 2;
@@ -345,6 +349,7 @@ message ClientToServerMessage {
     PrivateEvent privateEvent = 44;
     LeaveChatRoomAreaMessage leaveChatRoomAreaMessage = 45;
     ChangeChatRoomAreaNameMessage changeChatRoomAreaNameMessage=46;
+    DeleteChatRoomAreaMessage deleteChatRoomAreaMessage = 47;
   }
 }
 
