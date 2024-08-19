@@ -43,7 +43,7 @@
         chatVisibilityStoreUnsubscriber();
     });
 
-    let sideBarWidth;
+    let sideBarWidth: number;
 
     const handleMousedown = (e: MouseEvent) => {
         let dragX = e.clientX;
@@ -79,7 +79,7 @@
     };
 
     const handleDbClick = () => {
-        if (container.style.width === document.documentElement.clientWidth + "px") {
+        if (isChatBarInFullScreen()) {
             container.style.maxWidth = INITIAL_SIDEBAR_WIDTH + "px";
             container.style.width = INITIAL_SIDEBAR_WIDTH + "px";
         } else {
@@ -87,9 +87,24 @@
             container.style.width = document.documentElement.clientWidth + "px";
         }
     };
+
+    const onresize = () => {
+        if (isChatSidebarLargerThanWindow()) {
+            container.style.maxWidth = document.documentElement.clientWidth + "px";
+            container.style.width = document.documentElement.clientWidth + "px";
+        }
+    };
+
+    const isChatSidebarLargerThanWindow = () => {
+        return sideBarWidth >= document.documentElement.clientWidth;
+    };
+
+    const isChatBarInFullScreen = () => {
+        return sideBarWidth === document.documentElement.clientWidth;
+    };
 </script>
 
-<svelte:window on:keydown={onKeyDown} />
+<svelte:window on:keydown={onKeyDown} on:resize={onresize} />
 {#if $chatVisibilityStore}
     <section
         bind:clientWidth={sideBarWidth}
