@@ -26,7 +26,6 @@ export class ProximityChatConnection implements ChatConnectionInterface {
             return rooms;
         });
     }
-    
 
     addUserFromSpace(user: SpaceUserExtended): void {
         // if the user isn't already in the list, don't add it
