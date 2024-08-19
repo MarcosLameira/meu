@@ -120,6 +120,19 @@ message UpdateChatIdMessage {
   string chatId = 2;
 }
 
+message LeaveChatRoomAreaMessage {
+  string roomID = 1;
+}
+
+message DeleteChatRoomAreaMessage {
+  string roomID = 1;
+}
+
+message ChangeChatRoomAreaNameMessage{
+  string roomID = 1;
+  string name = 2;
+}
+
 message EmotePromptMessage {
   string emote = 2;
 }
@@ -334,6 +347,9 @@ message ClientToServerMessage {
     UpdateChatIdMessage updateChatIdMessage = 42;
     PublicEvent publicEvent = 43;
     PrivateEvent privateEvent = 44;
+    LeaveChatRoomAreaMessage leaveChatRoomAreaMessage = 45;
+    ChangeChatRoomAreaNameMessage changeChatRoomAreaNameMessage=46;
+    DeleteChatRoomAreaMessage deleteChatRoomAreaMessage = 47;
   }
 }
 
@@ -416,7 +432,9 @@ message QueryMessage {
     GetMemberQuery getMemberQuery = 8;
     TurnCredentialsQuery turnCredentialsQuery = 9;
     ChatMembersQuery chatMembersQuery = 10;
-    SearchTagsQuery searchTagsQuery = 11;
+    CreateChatRoomForAreaQuery createChatRoomForAreaQuery = 11;
+    SearchTagsQuery searchTagsQuery = 12;
+    EnterChatRoomAreaQuery enterChatRoomAreaQuery = 13;
   }
 }
 
@@ -463,8 +481,16 @@ message ChatMembersQuery {
   string searchText = 1;
 }
 
+message CreateChatRoomForAreaQuery{
+  string areaID = 1;
+}
+
 message  SearchTagsQuery{
   string searchText = 1;
+}
+
+message EnterChatRoomAreaQuery{
+  string roomID = 1;
 }
 
 message AnswerMessage {
@@ -481,7 +507,9 @@ message AnswerMessage {
     GetMemberAnswer getMemberAnswer = 10;
     TurnCredentialsAnswer turnCredentialsAnswer = 11;
     ChatMembersAnswer chatMembersAnswer = 12;
-    SearchTagsAnswer searchTagsAnswer = 13;
+    CreateChatRoomForAreaAnswer createChatRoomForAreaAnswer = 13;
+    SearchTagsAnswer searchTagsAnswer = 14;
+    EnterChatRoomAreaAnswer enterChatRoomAreaAnswer = 15;
   }
 }
 
@@ -535,6 +563,14 @@ message GetMemberAnswer {
 message ChatMembersAnswer {
   int64 total = 1;
   repeated ChatMember members = 2;
+}
+
+message CreateChatRoomForAreaAnswer{
+  string chatRoomID = 1;
+}
+
+message EnterChatRoomAreaAnswer{
+
 }
 
 message Member {

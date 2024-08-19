@@ -111,6 +111,7 @@ export class MatrixChatConnection implements ChatConnectionInterface {
         this.client.on(ClientEvent.Room, this.onClientEventRoom.bind(this));
         this.client.on(ClientEvent.DeleteRoom, this.onClientEventDeleteRoom.bind(this));
         this.client.on(RoomEvent.MyMembership, this.onRoomEventMembership.bind(this));
+        this.client.on(RoomEvent.Name, this.onClientEventRoom.bind(this));
 
         await this.client.store.startup();
         await this.client.initRustCrypto();

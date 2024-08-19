@@ -128,6 +128,14 @@ export const PersonalAreaPropertyData = PropertyBase.extend({
     allowedTags: z.array(z.string()).default([]),
     ownerId: z.string().nullable(), //Proto handle null here. If something goes wrong with personal area, this may be the issue
 });
+
+export const MatrixRoomPropertyData = PropertyBase.extend({
+    type: z.literal("matrixRoomPropertyData"),
+    matrixRoomId: z.string(),
+    shouldOpenAutomatically: z.boolean(),
+    displayName: z.string(),
+});
+
 export const AreaDataProperty = z.discriminatedUnion("type", [
     StartPropertyData,
     ExitPropertyData,
@@ -141,6 +149,7 @@ export const AreaDataProperty = z.discriminatedUnion("type", [
     AreaDescriptionPropertyData,
     RestrictedRightsPropertyData,
     PersonalAreaPropertyData,
+    MatrixRoomPropertyData,
 ]);
 
 export const AreaDataProperties = z.array(AreaDataProperty);
@@ -349,6 +358,7 @@ export type EntityDescriptionPropertyData = z.infer<typeof EntityDescriptionProp
 export type AreaDescriptionPropertyData = z.infer<typeof AreaDescriptionPropertyData>;
 export type RestrictedRightsPropertyData = z.infer<typeof RestrictedRightsPropertyData>;
 export type PersonalAreaPropertyData = z.infer<typeof PersonalAreaPropertyData>;
+export type MatrixRoomPropertyData = z.infer<typeof MatrixRoomPropertyData>;
 export type PersonalAreaAccessClaimMode = z.infer<typeof PersonalAreaAccessClaimMode>;
 
 export enum GameMapProperties {
