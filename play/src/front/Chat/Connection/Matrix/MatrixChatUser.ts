@@ -18,7 +18,7 @@ export const chatUserFactory: (matrixChatUser: User, matrixClient: MatrixClient)
         availabilityStatus: writable(AvailabilityStatus.ONLINE),
     };
     chatUser.id = matrixChatUser.userId;
-    chatUser.username = matrixChatUser.displayName;
+    chatUser.username = matrixChatUser.rawDisplayName;
     chatUser.avatarUrl = matrixClient.mxcUrlToHttp(matrixChatUser.avatarUrl ?? "", 48, 48);
 
     chatUser.avatarUrl = matrixChatUser.avatarUrl ?? null;
